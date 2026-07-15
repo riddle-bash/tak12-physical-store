@@ -1,0 +1,670 @@
+# Physical Gem Shop Implementation
+
+## Overview
+
+This document describes the implementation of the **Physical Gem Shop** purchasing system built on **ABP Framework** and **Entity Framework Core**.
+
+The Physical Gem Shop extends the existing Gem Shop architecture to support purchasing real-world products using Gems while maintaining inventory, shipping information, and order management.
+
+The implementation is designed to be:
+
+- SOLID compliant
+- Easily extensible
+- Concurrency-safe
+- Transactional
+- Consistent with existing ABP Framework architecture
+
+---
+
+# Existing Database
+
+The implementation uses the existing database schema.
+
+Existing tables:
+
+- GemShopItems
+- GemShopOrders
+- GemShopOrderItems
+- GemShopShippingInfos
+- GemShopInventoryItems
+- GemShopInventoryTransactions
+- UserShippingInfos
+
+No schema changes are required.
+
+---
+
+# Supported Item Types
+
+The purchasing framework supports multiple item types.
+
+Current item types include:
+
+- Physical
+- AICredit
+- PROSubscription
+- CouponCode
+- Existing virtual items
+
+This implementation focuses only on the **Physical** item type while ensuring the purchasing framework remains extensible for future item types.
+
+---
+
+# Architecture
+
+The purchasing system follows the Strategy Pattern to avoid large switch statements and to simplify future expansion.
+
+```
+Purchase Request
+        │
+        ▼
+Purchase Application Service
+        │
+        ▼
+IPurchaseHandlerResolver
+        │
+        ▼
+PhysicalPurchaseHandler
+        │
+        ├── PurchaseValidationService
+        ├── GemDeductionService
+        ├── OrderService
+        ├── InventoryService
+        └── ShippingService
+```
+
+Each purchase type is encapsulated within its own handler implementation.
+
+Adding a new `GemShopItemType` should only require implementing a new purchase handler without modifying existing purchasing logic.
+
+---
+
+# Main Components
+
+## Purchase Handler
+
+Responsible for executing the complete purchase workflow for Physical items.
+
+Responsibilities:
+
+- Validate purchase
+- Deduct Gems
+- Create order
+- Reserve inventory
+- Create inventory transaction
+- Create shipping information
+
+---
+
+## Purchase Validation Service
+
+Responsible for validating whether a purchase is allowed.
+
+Validation includes:
+
+- Active period
+- Inventory availability
+- Purchase limit
+
+### Active Period
+
+Purchase is allowed only when:
+
+```
+StartDate <= CurrentTime <= EndDate
+```
+
+### Inventory
+
+Inventory must be available before reservation.
+
+### Purchase Limit
+
+Supports two limit types.
+
+#### AllTime
+
+Counts all completed purchases of the item.
+
+#### TimeRange
+
+Counts completed purchases within the configured active period.
+
+---
+
+## Inventory Service
+
+Responsible for all inventory operations.
+
+Inventory must never be modified directly.
+
+All changes must be recorded through `GemShopInventoryTransactions`.
+
+Inventory operations are transactional and concurrency-safe.
+
+Supported operations:
+
+- Reserve inventory
+- Release inventory
+- Stock in
+- Stock out
+- Inventory adjustment
+
+---
+
+## Inventory Transaction Types
+
+| Value | Type | Description |
+|--------|------|-------------|
+| 0 | StockIn | Receive inventory |
+| 1 | StockOut | Inventory leaves warehouse after successful delivery |
+| 2 | Reserved | Reserve inventory during purchase |
+| 3 | Released | Return reserved inventory after cancellation |
+| 4 | Adjustment | Manual inventory correction |
+
+---
+
+## Order Service
+
+Responsible for:
+
+- Creating GemShopOrder
+- Creating GemShopOrderItems
+- Updating order status
+
+Order creation is shared and reusable for future purchase handlers.
+
+---
+
+## Shipping Service
+
+Responsible for:
+
+- Creating shipping information
+- Updating shipping status
+- Maintaining tracking information
+
+Shipping status is independent from order status.
+
+---
+
+## Gem Deduction Service
+
+Responsible for deducting Gems from the user's balance.
+
+Gem deduction occurs before inventory reservation and order creation.
+
+---
+
+# Physical Item Configuration
+
+When a `GemShopItem` has type `Physical`, the following additional properties are used.
+
+| Property | Description |
+|-----------|-------------|
+| Quantity | Initial inventory when creating the item |
+| StartDate | Purchase start time |
+| EndDate | Purchase end time |
+| LimitPerStudent | Maximum purchases per user |
+| LimitType | Purchase limit calculation |
+
+## Limit Types
+
+| Value | Type |
+|--------|------|
+| 0 | AllTime |
+| 1 | TimeRange |
+
+---
+
+# Inventory Management
+
+Inventory quantity is maintained through transaction history.
+
+Administrators must never modify inventory directly.
+
+Every inventory change creates a corresponding `GemShopInventoryTransaction`.
+
+Typical workflow:
+
+Receiving inventory
+
+```
+StockIn
+```
+
+Inventory correction
+
+```
+Adjustment
+```
+
+Customer purchase
+
+```
+Reserved
+```
+
+Successful delivery
+
+```
+StockOut
+```
+
+Cancelled purchase
+
+```
+Released
+```
+
+---
+
+# Purchase Flow
+
+```
+User
+
+↓
+
+Browse Shop
+
+↓
+
+Select Physical Item
+
+↓
+
+Validate
+
+- Active period
+- Purchase limit
+- Inventory
+
+↓
+
+Select shipping address
+
+↓
+
+Confirm purchase
+
+↓
+
+Deduct Gems
+
+↓
+
+Create Order
+
+↓
+
+Create Order Item
+
+↓
+
+Reserve Inventory
+
+↓
+
+Create Inventory Transaction (Reserved)
+
+↓
+
+Create Shipping Information
+
+↓
+
+Return Success
+```
+
+---
+
+# Fulfillment Flow
+
+```
+Admin
+
+↓
+
+Prepare Shipment
+
+↓
+
+Update Shipping Status
+
+↓
+
+Ship Package
+
+↓
+
+Deliver Package
+
+↓
+
+Create Inventory Transaction (StockOut)
+
+↓
+
+Complete Order
+```
+
+Shipping Status and Order Status are managed independently.
+
+---
+
+# Admin Features
+
+## Gem Shop Item Management
+
+Reuse existing:
+
+```
+CreateEditGemShopItemModal.tsx
+```
+
+When Item Type is `Physical`, display:
+
+- Quantity
+- StartDate
+- EndDate
+- LimitPerStudent
+- LimitType
+
+The Quantity field is only used during item creation.
+
+Future inventory updates must be performed through inventory transactions.
+
+---
+
+## Inventory Management
+
+Provide an Inventory Transaction modal.
+
+Supported operations:
+
+- Stock In
+- Adjustment
+
+Fields:
+
+- Transaction Type
+- Quantity
+- Note
+
+Saving an inventory transaction will:
+
+- Create GemShopInventoryTransaction
+- Update GemShopInventoryItems
+- Never modify inventory directly
+
+---
+
+## Order Management
+
+Provide CRUD management for `GemShopOrders`.
+
+Features:
+
+- Pagination
+- Searching
+- Sorting
+- Status filtering
+
+Order details display:
+
+- Order information
+- Purchased items
+- Shipping information
+
+Each order item displays:
+
+- Product
+- Quantity
+- Gem cost
+- Status
+
+Administrators may update:
+
+- Order Status
+- Shipping Status
+
+Updating Shipping Status does not automatically change Order Status unless explicitly required by business rules.
+
+---
+
+## User Shipping Address Management
+
+Provide CRUD management for `UserShippingInfos`.
+
+Addresses are grouped by user.
+
+Features:
+
+- Create
+- Edit
+- Delete
+- Set Default
+
+List displays:
+
+- User
+- Address count
+- Default address
+
+---
+
+## Shipping Management
+
+Provide CRUD management for `GemShopShippingInfos`.
+
+Features:
+
+- Pagination
+- Searching
+- Sorting
+- Shipping status filtering
+
+Display:
+
+- Order
+- User
+- Receiver
+- Phone
+- Address
+- Tracking Number
+- Shipping Status
+
+Administrators may update:
+
+- Tracking Number
+- Shipping Status
+- Notes
+
+---
+
+# Client Features
+
+## Shop
+
+Route:
+
+```
+/shop
+```
+
+Supports:
+
+- Search
+- Item type filtering
+- Status filtering
+- Sorting
+- Pagination
+
+Each item displays:
+
+- Image
+- Name
+- Gem Cost
+- Remaining Inventory
+- Purchase Limit
+- Active Time
+- Availability
+
+Availability states:
+
+- Available
+- Out of Stock
+- Purchase Limit Reached
+- Outside Active Period
+
+---
+
+## Purchase Dialog
+
+Workflow:
+
+1. Validate purchase.
+2. Load user shipping addresses.
+3. Allow selecting or creating an address.
+4. Confirm purchase.
+5. Execute purchase flow.
+
+Server actions:
+
+- Deduct Gems
+- Create Order
+- Create Order Item
+- Reserve Inventory
+- Create Inventory Transaction
+- Create Shipping Information
+
+---
+
+## Order History
+
+Route:
+
+```
+/shop/orders
+```
+
+Supports:
+
+- Search
+- Time range
+- Sorting
+- Status filtering
+- Pagination
+
+Search matches purchased item names.
+
+Each order displays:
+
+- Order Number
+- Purchase Time
+- Total Gems
+- Order Status
+- Shipping Status
+
+Order details display:
+
+- Purchased items
+- Shipping information
+- Tracking number
+- Timeline
+- Current status
+
+---
+
+## Shipping Address
+
+Route:
+
+```
+/profile
+```
+
+Supports:
+
+- Create
+- Edit
+- Delete
+- Set Default
+
+The default address is automatically preselected during checkout.
+
+---
+
+# APIs
+
+## Client APIs
+
+- GetShopItems
+- GetShopItemDetail
+- PurchasePhysicalItem
+- GetMyOrders
+- GetMyOrderDetail
+- CRUD UserShippingInfos
+
+---
+
+## Admin APIs
+
+- CRUD GemShopItems
+- CRUD GemShopOrders
+- CRUD GemShopShippingInfos
+- CRUD InventoryTransactions
+- InventoryAdjustment
+
+Client and Admin APIs are implemented in separate Application Services.
+
+---
+
+# Concurrency & Transactions
+
+Inventory operations are concurrency-safe.
+
+The purchase process executes within a single transaction to ensure consistency.
+
+The transaction includes:
+
+- Purchase validation
+- Gem deduction
+- Order creation
+- Inventory reservation
+- Inventory transaction creation
+- Shipping information creation
+
+Any failure results in a rollback of the entire purchase operation.
+
+---
+
+# Extensibility
+
+The purchasing framework is designed to support additional item types without modifying existing purchase logic.
+
+To add a new item type:
+
+1. Create a new purchase handler implementing the purchase strategy interface.
+2. Register the handler.
+3. Configure the resolver.
+
+No changes should be required to existing purchase handlers or application services.
+
+---
+
+# Design Principles
+
+The implementation follows:
+
+- SOLID principles
+- Strategy Pattern for purchase handling
+- Reusable domain services
+- Transactional inventory management
+- Concurrency-safe reservation
+- Separation of Admin and Client APIs
+- ABP Framework conventions
+- Entity Framework Core best practices
+
+Future item types such as `CouponCode`, `PROSubscription`, `AICredit`, or other `GemShopItemType` implementations can be added by introducing new strategy implementations while reusing the existing purchasing infrastructure.

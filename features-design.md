@@ -398,7 +398,6 @@ Create / edit / delete addresses, set default. Default address is auto-preselect
 
 ## Concurrency & Transactions
 
-- Inventory operations are concurrency-safe (`RowVersion` on `GemShopInventoryItems`).
 - The entire purchase — validation, gem deduction, gem history write, order creation, inventory reservation, inventory transaction, shipping info — runs inside **one transaction**.
 - Any failure rolls back the whole operation.
 

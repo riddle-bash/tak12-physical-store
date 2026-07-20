@@ -90,6 +90,7 @@ Join table between `GemShopCampaigns` and `GemShopItems`.
 | `CampaignId` | `int` | FK → `GemShopCampaigns` |
 | `GemShopItemId` | `int` | FK → `GemShopItems` |
 | `LimitPerStudent` | `int` | Max purchases of **this item**, **within this campaign** |
+| `LimitType` | `smallint` | Enum 'Unlimited' = 0 (default 0), 'PerCampaign' = 1, 'Daily' = 2
 | `SortOrder` | `int` | Display order within the campaign |
 | `CreationTime` / `LastModificationTime` / `IsDeleted` | — | ABP audit fields (soft delete) |
 

@@ -52,59 +52,6 @@ Uses the existing tables, plus two new ones (`GemShopCampaigns`, `GemShopCampaig
 
 A campaign is **many-to-many** with items: one campaign (e.g. "Tết 2025 Sale") can bundle several `GemShopItems` together under a single active window, and the same item can appear in multiple campaigns over time (never two *overlapping* active campaigns for the same item, enforced at the application layer). `LimitPerStudent` is set **per item, per campaign** on `GemShopCampaignItems`, not on the campaign itself — two items in the same campaign can have different limits.
 
-```sql
--- =============================================================================
--- Part 6: GEMSHOPCAMPAIGNS – campaigns for physical items
--- =============================================================================
-
-IF NOT EXISTS (SELECT * FROM sysobjects WHERE name = 'GemShopCampaigns' AND xtype = 'U')
-BEGIN
-    CREATE TABLE [dbo].[GemShopCampaigns] (
-        [Id]                    INT             IDENTITY(1,1) NOT NULL,
-        [Name]                  NVARCHAR(255)   NOT NULL,
-        [Description]           NVARCHAR(1000)  NULL,
-        [StartDate]             DATETIME2       NOT NULL,
-        [EndDate]               DATETIME2       NOT NULL,
-        [CreationTime]          DATETIME2       NOT NULL    DEFAULT GETUTCDATE(),
-        [LastModificationTime]  DATETIME2       NULL,
-        [IsDeleted]             BIT             NOT NULL    DEFAULT 0,
-        CONSTRAINT [PK_GemShopCampaigns] PRIMARY KEY ([Id])
-    );
-
-    PRINT 'Created table GemShopCampaigns.';
-END
-ELSE
-BEGIN
-    PRINT 'Table GemShopCampaigns already exists – skipped.';
-END
-
-IF NOT EXISTS (SELECT * FROM sysobjects WHERE name = 'GemShopCampaignItems' AND xtype = 'U')
-BEGIN
-    CREATE TABLE [dbo].[GemShopCampaignItems] (
-        [Id]                    INT             IDENTITY(1,1) NOT NULL,
-        [CampaignId]            INT             NOT NULL,
-        [GemShopItemId]         INT             NOT NULL,
-        [LimitPerStudent]       INT             NOT NULL    DEFAULT 0,
-        [SortOrder]             INT             NOT NULL    DEFAULT 0,
-        [CreationTime]          DATETIME2       NOT NULL    DEFAULT GETUTCDATE(),
-        [LastModificationTime]  DATETIME2       NULL,
-        [IsDeleted]             BIT             NOT NULL    DEFAULT 0,
-        CONSTRAINT [PK_GemShopCampaignItems] PRIMARY KEY ([Id]),
-        CONSTRAINT [FK_GemShopCampaignItems_Campaign] FOREIGN KEY ([CampaignId]) REFERENCES [dbo].[GemShopCampaigns] ([Id]),
-        CONSTRAINT [FK_GemShopCampaignItems_GemShopItem] FOREIGN KEY ([GemShopItemId]) REFERENCES [dbo].[GemShopItems] ([Id]),
-        CONSTRAINT [UQ_GemShopCampaignItems_CampaignId_GemShopItemId] UNIQUE ([CampaignId], [GemShopItemId])
-    );
-
-    PRINT 'Created table GemShopCampaignItems.';
-END
-ELSE
-BEGIN
-    PRINT 'Table GemShopCampaignItems already exists – skipped.';
-END
-```
-
----
-
 ## Table Properties
 
 ### `GemShopItems`
